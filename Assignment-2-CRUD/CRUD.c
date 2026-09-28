@@ -140,12 +140,14 @@ int main(){
         printf("Enter your Choice:");
         scanf("%d",&k);
 
-       if(k==1) create_user();
-       else if(k==2) read_user();
-       else if(k==3) update_user();
-       else if(k==4) delete_user();
-       else if(k==5) break;
-       else printf("Wrong Choice.\n");
+        switch(k){
+            case 1: create_user(); break;
+            case 2: read_user(); break;
+            case 3: update_user(); break;
+            case 4: delete_user(); break;
+            case 5: return 0;
+            default: printf("Wrong Choice.\n");
+        }
     }
     return 0;
 }
