@@ -1,8 +1,9 @@
 #include<stdio.h> 
 #include<ctype.h> 
+#define MAXI 10000
 
-int num[10000], numtop=-1; 
-char op[10000], optop=-1; 
+int num[MAXI], numtop=-1; 
+char op[MAXI], optop=-1; 
  
 int calculate(int a,int b,char opr){ 
     if(opr=='+') return a+b; 
@@ -24,12 +25,12 @@ int priority_DMAS(char op){
 }  
  
 int main(){ 
-    char exp[10000]; 
+    char exp[MAXI]; 
     int i=0, val,a,b,ans; 
     int expect_num=1; 
     char opr; 
     printf("Enter the expression:"); 
-    fgets(exp,10000,stdin); 
+    fgets(exp,MAXI,stdin); 
      
     while(exp[i]!='\0'){ 
         if(isspace(exp[i])){ 
@@ -47,6 +48,10 @@ int main(){
                 val=val*10+(exp[i]-'0'); 
                 i++; 
             } 
+            if(numtop>=MAXI-1){
+                printf("Error: Number stack overflow.");
+                return 0;
+            }
             numtop++; 
             num[numtop]=val; 
             expect_num=0; 
@@ -70,9 +75,17 @@ int main(){
                     return 0;
                 }
                 ans=calculate(a,b,opr); 
+                if(numtop>=MAXI-1){
+                    printf("Error: Number stack overflow.");
+                    return 0;
+                }
                 numtop++; 
                 num[numtop]=ans; 
             } 
+            if(optop>=MAXI-1){
+                printf("Error: Operator stack overflow.");
+                return 0;
+            }
             optop++; 
             op[optop]=exp[i]; 
             expect_num=1; 
@@ -102,6 +115,10 @@ int main(){
             return 0;
         }
         ans=calculate(a,b,opr); 
+        if(numtop>=MAXI-1){
+            printf("Error: Number stack overflow.");
+            return 0;
+        }
         numtop++; 
         num[numtop]=ans; 
     } 

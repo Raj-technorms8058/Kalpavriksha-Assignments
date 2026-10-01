@@ -18,7 +18,7 @@ void create_user(){
     printf("Enter ID:");
     scanf("%d",&u.id);
 
-    while(fscanf(temp,"%d %s %d",&t.id,t.name,&t.age)!=EOF){
+    while(fscanf(temp,"%d %39s %d",&t.id,t.name,&t.age)!=EOF){
         if(t.id==u.id){
             printf("This ID already exists.\n");
             fclose(f);
@@ -28,7 +28,7 @@ void create_user(){
     }
     fclose(temp);
     printf("Enter Name:");
-    scanf("%s",u.name);
+    scanf("%39s",u.name);
     printf("Enter Age:");
     scanf("%d",&u.age);
 
@@ -52,11 +52,11 @@ void update_user(){
     }
     printf("Enter ID:");
     scanf("%d",&id);
-    while(fscanf(f,"%d %s %d",&u.id,u.name,&u.age)!=EOF){
+    while(fscanf(f,"%d %39s %d",&u.id,u.name,&u.age)!=EOF){
         if(u.id==id){
             found=1;
             printf("Enter new Name:");
-            scanf("%s",u.name);
+            scanf("%39s",u.name);
             printf("Enter new Age:");
             scanf("%d",&u.age);
         }
@@ -64,8 +64,15 @@ void update_user(){
     }
     fclose(f);
     fclose(new);
-    remove("users.txt");
-    rename("new.txt","users.txt");
+    
+    if(remove("users.txt")!=0){
+        printf("Error in deleting the old file.\n");
+        return;
+    }
+    if(rename("new.txt","users.txt")!=0){
+        printf("Error in renaming new file to old file.\n");
+        return;
+    }
 
     if(found){
         printf("User updation successful.\n");
@@ -82,8 +89,8 @@ void read_user(){
         printf("Error Opening File.\n");
         return;
     }
-    printf("\n~ ~ ~ User Records ~ ~ ~\n");
-    while(fscanf(f,"%d %s %d",&u.id,u.name,&u.age)!=EOF){
+    printf("User Records:\n");
+    while(fscanf(f,"%d %39s %d",&u.id,u.name,&u.age)!=EOF){
         printf("ID=%d | Name=%s | Age=%d\n",u.id,u.name,u.age);
     }
     fclose(f);
@@ -105,7 +112,7 @@ void delete_user(){
     printf("Enter ID:");
     scanf("%d",&id);
 
-    while(fscanf(f,"%d %s %d",&u.id,u.name,&u.age)!=EOF){
+    while(fscanf(f,"%d %39s %d",&u.id,u.name,&u.age)!=EOF){
         if(u.id==id){
             found=1;
         }
@@ -115,8 +122,14 @@ void delete_user(){
     }
     fclose(f);
     fclose(new);
-    remove("users.txt");
-    rename("new.txt","users.txt");
+    if(remove("users.txt")!=0){
+        printf("Error in deleting the old file.\n");
+        return;
+    }
+    if(rename("new.txt","users.txt")!=0){
+        printf("Error in renaming new file to old file.\n");
+        return;
+    }
 
     if(found){
         printf("User deletion successful.\n");
