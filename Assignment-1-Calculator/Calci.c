@@ -166,6 +166,6 @@ int main(){
             return 0;
         }
     } 
-    printf("Result=%d\n",numStack.data[numStack.top]); 
+    printf("%d\n",numStack.data[numStack.top]);
     return 0; 
 }
