@@ -2,15 +2,60 @@
 #include<ctype.h> 
 #define MAXI 10000
 
-int num[MAXI], numtop=-1; 
-char op[MAXI], optop=-1; 
+typedef struct{
+    int data[MAXI];
+    int top;
+}intStack;
+
+typedef struct{
+    char data[MAXI];
+    int top;
+}charStack;
+
+void initialise_intStack(intStack *s){
+    s->top=-1;
+}
+
+void initialise_charStack(charStack *s){
+    s->top=-1;
+}
  
-int calculate(int a,int b,char opr){ 
-    if(opr=='+') return a+b; 
-    if(opr=='-') return a-b; 
-    if(opr=='*') return a*b; 
-    if(opr=='/') return a/b; 
-    return 0; 
+int pushInt(intStack *s,int val){
+    if(s->top>=MAXI-1) return 0;
+    s->top++;
+    s->data[s->top]=val;
+    return 1;
+}
+int popInt(intStack *s,int *val){
+    if(s->top<0) return 0;
+    *val=s->data[s->top];
+    s->top--;
+    return 1;
+}
+
+int pushChar(charStack *s,char val){
+    if(s->top>=MAXI-1) return 0;
+    s->top++;
+    s->data[s->top]=val;
+    return 1;
+}
+int popChar(charStack *s,char *val){
+    if(s->top<0) return 0;
+    *val=s->data[s->top];
+    s->top--;
+    return 1;
+}
+
+int calculate(int a,int b,char opr,int *result){
+    if(opr=='+') *result=a+b;
+    else if(opr=='-') *result=a-b;
+    else if(opr=='*') *result=a*b;
+    else if(opr=='/'){
+        if(b==0) return 2;
+        *result=a/b;
+    }
+    else return 1;
+    return 0;
 }
 
 int isOp(char ch){ 
@@ -23,37 +68,53 @@ int priority_DMAS(char op){
     if(op=='+'||op=='-') return 1; 
     return 0; 
 }  
- 
+
+int reduceOnce(intStack *numStack,charStack *opStack){
+    int a,b,result,error;
+    char opr;
+    if(!popInt(numStack,&b)) return 1;
+    if(!popInt(numStack,&a)) return 1;
+    if(!popChar(opStack,&opr)) return 1;
+
+    error=calculate(a,b,opr,&result);
+    if(error!=0) return error;
+    if(!pushInt(numStack,result)) return 1;
+    return 0;
+}
+
 int main(){ 
     char exp[MAXI]; 
-    int i=0, val,a,b,ans; 
+    int i=0,val; 
     int expect_num=1; 
-    char opr; 
     printf("Enter the expression:"); 
     fgets(exp,MAXI,stdin); 
+    intStack numStack;
+    charStack opStack;
+
+    initialise_intStack(&numStack);
+    initialise_charStack(&opStack);
      
     while(exp[i]!='\0'){ 
-        if(isspace(exp[i])){ 
+        if(isspace((unsigned char)exp[i])){ 
             i++; 
             continue; 
         } 
 
-        if(isdigit(exp[i])){ 
+        if(isdigit((unsigned char)exp[i])){ 
             if(expect_num==0){ 
                 printf("Error: Invalid expression.\n"); 
                 return 0; 
             } 
+
             val=0; 
-            while(isdigit(exp[i])){ 
+            while(isdigit((unsigned char)exp[i])){ 
                 val=val*10+(exp[i]-'0'); 
                 i++; 
             } 
-            if(numtop>=MAXI-1){
-                printf("Error: Number stack overflow.");
+            if(!pushInt(&numStack,val)){
+                printf("Error: Number stack overflow.\n");
                 return 0;
             }
-            numtop++; 
-            num[numtop]=val; 
             expect_num=0; 
         } 
 
@@ -62,32 +123,23 @@ int main(){
                 printf("Error: Invalid expression.\n"); 
                 return 0; 
             } 
-            while(optop!=-1 && priority_DMAS(op[optop])>=priority_DMAS(exp[i])){ 
-                b=num[numtop]; 
-                numtop--; 
-                a=num[numtop]; 
-                numtop--; 
-                opr=op[optop]; 
-                optop--; 
+            while(opStack.top!=-1 && priority_DMAS(opStack.data[opStack.top])>=priority_DMAS(exp[i])){ 
+                int error=reduceOnce(&numStack,&opStack);
 
-                if(opr=='/' && b==0){
+                if(error==1){
+                    printf("Error: Invalid expression.\n");
+                    return 0;
+                } 
+                if(error==2){ 
                     printf("Error: Division by zero.\n");
                     return 0;
                 }
-                ans=calculate(a,b,opr); 
-                if(numtop>=MAXI-1){
-                    printf("Error: Number stack overflow.");
-                    return 0;
-                }
-                numtop++; 
-                num[numtop]=ans; 
             } 
-            if(optop>=MAXI-1){
-                printf("Error: Operator stack overflow.");
+
+            if(!pushChar(&opStack,exp[i])){
+                printf("Error: Operator stack overflow.\n");
                 return 0;
             }
-            optop++; 
-            op[optop]=exp[i]; 
             expect_num=1; 
             i++; 
         } 
@@ -97,31 +149,23 @@ int main(){
             return 0; 
         } 
     } 
-
+    
     if(expect_num==1){ 
         printf("Error: Invalid expression.\n"); 
         return 0; 
     } 
+    while(opStack.top!=-1){ 
+        int error=reduceOnce(&numStack,&opStack);
 
-    while(optop!=-1){ 
-        b=num[numtop]; 
-        numtop--; 
-        a=num[numtop]; 
-        numtop--; 
-        opr=op[optop]; 
-        optop--; 
-        if(opr=='/' && b==0){
+        if(error==1){
+            printf("Error: Invalid expression.\n");
+            return 0;
+        }
+        if(error==2){
             printf("Error: Division by zero.\n");
             return 0;
         }
-        ans=calculate(a,b,opr); 
-        if(numtop>=MAXI-1){
-            printf("Error: Number stack overflow.");
-            return 0;
-        }
-        numtop++; 
-        num[numtop]=ans; 
     } 
-    printf("Result=%d\n",num[numtop]); 
+    printf("Result=%d\n",numStack.data[numStack.top]); 
     return 0; 
 }
