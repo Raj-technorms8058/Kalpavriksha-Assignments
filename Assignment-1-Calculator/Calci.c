@@ -87,27 +87,27 @@ int main(){
     int i=0,val; 
     int expect_num=1; 
     printf("Enter the expression:"); 
-    fgets(exp,MAXI,stdin); 
+    fgets(exp,MAXI,stdin);
     intStack numStack;
     charStack opStack;
 
     initialise_intStack(&numStack);
     initialise_charStack(&opStack);
      
-    while(exp[i]!='\0'){ 
-        if(isspace((unsigned char)exp[i])){ 
-            i++; 
-            continue; 
+    while(exp[i]!='\0'){  
+        if(isspace(exp[i])){ 
+            i++;
+            continue;
         } 
 
-        if(isdigit((unsigned char)exp[i])){ 
+        if(isdigit(exp[i])){ 
             if(expect_num==0){ 
                 printf("Error: Invalid expression.\n"); 
                 return 0; 
-            } 
+            }
 
             val=0; 
-            while(isdigit((unsigned char)exp[i])){ 
+            while(isdigit(exp[i])){ 
                 val=val*10+(exp[i]-'0'); 
                 i++; 
             } 
