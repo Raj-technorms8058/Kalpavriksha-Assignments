@@ -1,12 +1,18 @@
 #include<stdio.h>
-#define MAXI_STD 100
-#define MAXI_NAME 100
-#define SUBS 3
+
+#define MAX_STUDENTS 100
+#define MAX_NAME 100
+#define SUBJECTS 3
+
+#define GRADE_A_MIN 85
+#define GRADE_B_MIN 70
+#define GRADE_C_MIN 50
+#define GRADE_D_MIN 35
 
 struct student{
     int rollNum;
-    char name[MAXI_NAME];
-    int marks[SUBS];
+    char name[MAX_NAME];
+    int marks[SUBJECTS];
 };
 
 int isValidRollNum(int roll){
@@ -14,17 +20,18 @@ int isValidRollNum(int roll){
     return 1;
 }
 
-int isValidName(char name[]){
+//The scanset %99[A-Za-z ] allows letters and spaces, but it also accepts names containing only spaces.
+int isValidName(const char name[]){ //To check that no empty name passes bcoz we are taking names with spaces 
     for(int i=0;name[i]!='\0';i++){
-        if((name[i]<'A'||name[i]>'Z') && (name[i]<'a'||name[i]>'z') && name[i]!=' '){
-            return 0;
+        if(name[i]!=' '){
+            return 1; 
         }
     }
-    return 1;
+    return 0; 
 }
 
-int isValidMarks(int marks[]){
-    for(int i=0;i<SUBS;i++){
+int isValidMarks(const int marks[]){
+    for(int i=0;i<SUBJECTS;i++){
         if(marks[i]<0||marks[i]>100){
             return 0;
         }
@@ -32,49 +39,49 @@ int isValidMarks(int marks[]){
     return 1;
 }
 
-int totaling(struct student s){
+int calculateTotal(const struct student *s){
     int total=0;
-    for(int i=0;i<SUBS;i++){
-        total+=s.marks[i];
+    for(int i=0;i<SUBJECTS;i++){
+        total+=s->marks[i];
     }
     return total;
 }
 
-float averaging(int total){
-    float avg=(float)total/SUBS;
+float calculateAverage(int total){
+    float avg=(float)total/SUBJECTS;
     return avg;
 }
 
-char grading(float avg){
-    if(avg>=85) return 'A';
-    else if(avg>=70) return 'B';
-    else if(avg>=50) return 'C';
-    else if(avg>=35) return 'D';
+char getGrade(float avg){
+    if(avg>=GRADE_A_MIN) return 'A';
+    else if(avg>=GRADE_B_MIN) return 'B';
+    else if(avg>=GRADE_C_MIN) return 'C';
+    else if(avg>=GRADE_D_MIN) return 'D';
     else return 'F';
 }
 
-void performance(char grade){
-    int star;
-    if(grade=='A') star=5;
-    else if(grade=='B') star=4;
-    else if(grade=='C') star=3;
-    else if(grade=='D') star=2;
+void printPerformance(char grade){
+    int stars;
+    if(grade=='A') stars=5;
+    else if(grade=='B') stars=4;
+    else if(grade=='C') stars=3;
+    else if(grade=='D') stars=2;
     else return;
 
     printf("Performance:");
-    for(int i=0;i<star;i++){
+    for(int i=0;i<stars;i++){
         printf("*");
     }
     printf("\n");
 }
 
-void print_rollno(struct student std[],int n,int idx){
-    if(idx==n) return; //base condition
+void printRollNumbers(const struct student std[],int n,int idx){
+    if(idx==n) return;
     printf("%d",std[idx].rollNum);
     if(idx<n-1){
         printf(" ");
     }
-    print_rollno(std,n,idx+1);//recurr
+    printRollNumbers(std,n,idx+1);
 }
 
 int readStudent(struct student *s){
@@ -87,9 +94,9 @@ int readStudent(struct student *s){
     return 1;
 }
 
-void printStudent(struct student s,int total,float avg,char grade){
-    printf("\nRoll: %d\n",s.rollNum);
-    printf("Name: %s\n",s.name);
+void printStudent(const struct student *s,int total,float avg,char grade){
+    printf("\nRoll: %d\n",s->rollNum);
+    printf("Name: %s\n",s->name);
     printf("Total: %d\n",total);
     printf("Average: %.2f\n",avg);
     printf("Grade: %c\n",grade);
@@ -97,30 +104,27 @@ void printStudent(struct student s,int total,float avg,char grade){
 
 int main(){
     int n;
-    struct student std[MAXI_STD];
-    if(scanf("%d",&n)!=1||n<1||n>MAXI_STD){
+    struct student std[MAX_STUDENTS];
+    if(scanf("%d",&n)!=1||n<1||n>MAX_STUDENTS){
         printf("Error: Invalid no. of students.\n");
-        return 0;
+        return 1;
     }
 
     for(int i=0;i<n;i++){
         if(readStudent(&std[i])==0){
             printf("Error: Invalid input.\n");
-            return 0;
+            return 1;
         }
     }
     for(int i=0;i<n;i++){
-        int total=totaling(std[i]);
-        float avg=averaging(total);
-        char grade=grading(avg);
-        printStudent(std[i],total,avg,grade);
-
-        if(avg<35){
-            continue;
-        }
-        performance(grade);
+        int total=calculateTotal(&std[i]);
+        float avg=calculateAverage(total);
+        char grade=getGrade(avg);
+        printStudent(&std[i],total,avg,grade);
+        printPerformance(grade);
     }
     printf("\nList of Roll Numbers (via recursion): ");
-    print_rollno(std,n,0);
+    printRollNumbers(std,n,0);
+    printf("\n");
     return 0;
 }
