@@ -1,32 +1,47 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
+#include <string.h>
 
-#define MINIMUM_VALUE 2
-#define MAXIMUM_VALUE 10
+#define MIN_MATRIX_SIZE 2
+#define MAX_MATRIX_SIZE 10
 #define MAX_PIXEL_VALUE 255
 
 int getValidInput(int *n) {
+  char input[100], *end;
+  long value;
+  int ch;
+
   while (1) {
-    printf("Enter matrix size (%d-%d): ", MINIMUM_VALUE, MAXIMUM_VALUE);
-    int status = scanf("%d", n);
-    if (status == EOF) {
+    printf("Enter matrix size (%d-%d): ", MIN_MATRIX_SIZE, MAX_MATRIX_SIZE);
+
+    if (fgets(input, sizeof(input), stdin) == NULL) {
       printf("\nEnd of input reached. Exiting program.\n");
       return 0;
     }
-    int valid = 1;
-    int ch = getchar();
-    while (ch != '\n' && ch != EOF) {
-      if (ch != ' ' && ch != '\t' && ch != '\r') {
-        valid = 0;
+
+    if (strchr(input, '\n') == NULL && !feof(stdin)) {
+      while ((ch = getchar()) != '\n' && ch != EOF) {
       }
-      ch = getchar();
+      printf("Invalid input! Please enter an integer between %d and %d.\n",
+             MIN_MATRIX_SIZE, MAX_MATRIX_SIZE);
+      continue;
     }
-    if (status == 1 && valid && *n >= MINIMUM_VALUE && *n <= MAXIMUM_VALUE) {
+
+    value = strtol(input, &end, 10);
+
+    while (*end == ' ' || *end == '\t' || *end == '\r' || *end == '\n') {
+      end++;
+    }
+
+    if (end != input && *end == '\0' &&
+        value >= MIN_MATRIX_SIZE && value <= MAX_MATRIX_SIZE) {
+      *n = (int)value;
       return 1;
     }
+
     printf("Invalid input! Please enter an integer between %d and %d.\n",
-           MINIMUM_VALUE, MAXIMUM_VALUE);
+           MIN_MATRIX_SIZE, MAX_MATRIX_SIZE);
   }
 }
 
@@ -41,6 +56,8 @@ int allocateMatrix(int ***mat, int **data, int n) {
     *mat = NULL;
     return 0;
   }
+
+  // Pointer slots are used because the assignment requires pointer swapping for in-place matrix rotation.
   for (int i = 0; i < n * n; i++) {
     *(*mat + i) = *data + i;
   }
@@ -52,6 +69,10 @@ void freeMatrix(int **mat, int *data) {
   free(data);
 }
 
+int *cell(int **mat, int n, int i, int j) {
+  return *(mat + i * n + j);
+}
+
 void generateMatrix(int **mat, int n) {
   for (int i = 0; i < n * n; i++) {
     **(mat + i) = rand() % (MAX_PIXEL_VALUE + 1);
@@ -61,7 +82,7 @@ void generateMatrix(int **mat, int n) {
 void printMatrix(int **mat, int n) {
   for (int i = 0; i < n; i++) {
     for (int j = 0; j < n; j++) {
-      printf("%4d ", **(mat + i * n + j));
+      printf("%4d ", *cell(mat, n, i, j));
     }
     printf("\n");
   }
@@ -89,7 +110,7 @@ void rotateMatrix(int **mat, int n) {
   }
 }
 
-int calculateAverage(int **mat, int n, int i, int j, int *prev, int *curr) {
+int calculateAverage(int *copy, int n, int i, int j) {
   int sum = 0, count = 0;
   for (int r = i - 1; r <= i + 1; r++) {
     if (r < 0 || r >= n) {
@@ -99,48 +120,34 @@ int calculateAverage(int **mat, int n, int i, int j, int *prev, int *curr) {
       if (c < 0 || c >= n) {
         continue;
       }
-      if (r == i - 1) {
-        sum += *(prev + c);
-      } else if (r == i) {
-        sum += *(curr + c);
-      } else {
-        sum += **(mat + r * n + c);
-      }
+      sum += *(copy + r * n + c);
       count++;
     }
   }
+  // Integer division in sum / count truncates the fractional part.
   return sum / count;
 }
 
 int smoothMatrix(int **mat, int n) {
-  int *prev = NULL, *curr = NULL, *temp;
-  prev = malloc((size_t)n * sizeof(int));
-  curr = malloc((size_t)n * sizeof(int));
-  if (prev == NULL || curr == NULL) {
-    free(prev);
-    free(curr);
+  int *copy = malloc((size_t)n * n * sizeof(int));
+  if (copy == NULL) {
     return 0;
   }
-  // Copy the current row before updating its pixel values.
-  // prev stores the original values of the previous row,
-  // while curr stores the original values of the current row.
-  // This prevents updated pixels from affecting the next averages.
+
+  // Copy the original matrix before updating its pixel values.
   for (int i = 0; i < n; i++) {
     for (int j = 0; j < n; j++) {
-      *(curr + j) = **(mat + i * n + j);
+      *(copy + i * n + j) = *cell(mat, n, i, j);
     }
-    for (int j = 0; j < n; j++) {
-      **(mat + i * n + j) = calculateAverage(mat, n, i, j, prev, curr);
-    }
-    // Swap prev and curr so the original values of the current row
-    // are available as the previous row,while the old prev buffer
-    // can be reused to store the original values of the next row.
-    temp = prev;
-    prev = curr;
-    curr = temp;
   }
-  free(prev);
-  free(curr);
+
+  for (int i = 0; i < n; i++) {
+    for (int j = 0; j < n; j++) {
+      *cell(mat, n, i, j) = calculateAverage(copy, n, i, j);
+    }
+  }
+
+  free(copy);
   return 1;
 }
 
@@ -157,7 +164,6 @@ int main(void) {
 
   if (!allocateMatrix(&mat, &data, n)) {
     printf("Memory allocation failed.\n");
-    freeMatrix(mat, data);
     return 1;
   }
 
