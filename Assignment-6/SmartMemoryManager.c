@@ -32,14 +32,13 @@ struct MemoryManager{
     int strategy;
 };
 
-int getInt(){
+int getInt(int *value){
     char input[100], extra;
     int ch, n;
 
     while(1){
         if(fgets(input, sizeof(input), stdin) == NULL){
-            printf("\nInput error or end of input.");
-            exit(1);
+            return 0;
         }
 
         if(strchr(input, '\n') == NULL){
@@ -58,7 +57,8 @@ int getInt(){
             continue;
         }
 
-        return n;
+        *value = n;
+        return 1;
     }
 }
 
@@ -77,13 +77,25 @@ int validRequestSize(int requestSize, size_t poolSize){
 int initializePool(struct MemoryManager *m){
     int poolSize;
 
+    m->pool = NULL;
+    m->blocks = NULL;
+    m->poolSize = 0;
+    m->count = 0;
+    m->capacity = 0;
+    m->nextId = INITIAL_ID;
+    m->strategy = BEST_FIT;
+
     printf("\nEnter Pool Size: ");
-    poolSize = getInt();
+    if(!getInt(&poolSize)){
+        return 0;
+    }
 
     while(!validPoolSize(poolSize)){
         printf("\nPool size must be between %d and %d.",MIN_POOL_SIZE, MAX_POOL_SIZE);
         printf("\nEnter Pool Size: ");
-        poolSize = getInt();
+        if(!getInt(&poolSize)){
+            return 0;
+        }
     }
     m->poolSize = (size_t)poolSize;
     m->pool = malloc(m->poolSize * sizeof(unsigned char));
@@ -96,6 +108,7 @@ int initializePool(struct MemoryManager *m){
     if(m->blocks == NULL){
         printf("\nMemory Allocation failed!");
         free(m->pool);
+        m->pool = NULL;
         return 0;
     }
 
@@ -106,8 +119,6 @@ int initializePool(struct MemoryManager *m){
 
     m->count = INITIAL_COUNT;
     m->capacity = INITIAL_CAPACITY;
-    m->nextId = INITIAL_ID;
-    m->strategy = BEST_FIT;
 
     return 1;
 }
@@ -197,9 +208,9 @@ int findSuitableBlock(struct MemoryManager *m, size_t size, int strategy){
     return idx;
 }
 
-int allocateMemory(struct MemoryManager *m, size_t size, int strategy){
+int allocateMemory(struct MemoryManager *m, size_t size, int strategy, int *id, size_t *start){
     if(size == 0 || size > m->poolSize){
-        printf("\nRequested Size is larger than available size!");
+        printf("\nInvalid size: must be between 1 and %zu.", m->poolSize);
         return 0;
     }
 
@@ -210,9 +221,12 @@ int allocateMemory(struct MemoryManager *m, size_t size, int strategy){
         return 0;
     }
 
+    int allocationId = m->nextId;
+    size_t allocationStart = (m->blocks+idx)->start;
+
     if((m->blocks+idx)->size == size){
         (m->blocks+idx)->isAllocated = 1;
-        (m->blocks+idx)->id = m->nextId;
+        (m->blocks+idx)->id = allocationId;
 
         m->nextId++;
     }else if((m->blocks+idx)->size > size){
@@ -230,7 +244,7 @@ int allocateMemory(struct MemoryManager *m, size_t size, int strategy){
 
         (m->blocks+idx)->size = size;
         (m->blocks+idx)->isAllocated = 1;
-        (m->blocks+idx)->id = m->nextId;
+        (m->blocks+idx)->id = allocationId;
 
         (m->blocks+idx+1)->start = oldstart+size;
         (m->blocks+idx+1)->size = oldsize-size;
@@ -240,6 +254,9 @@ int allocateMemory(struct MemoryManager *m, size_t size, int strategy){
         m->count++;
         m->nextId++;
     }
+
+    *id = allocationId;
+    *start = allocationStart;
 
     return 1;
 }
@@ -417,7 +434,7 @@ int resizeMemory(struct MemoryManager *m, int id, size_t newSize){
     }else{
 
         printf("\nsize is already equal to requested size");
-        return 1;
+        return 2;
     }
 
     return 1;
@@ -427,11 +444,11 @@ void displayMemoryMap(struct MemoryManager *m){
     for(size_t i=0;i<m->count;i++){
         printf("\nBlock Number: %zu \nStarting Address: %zu \nEnding Address: %zu \nBlock Size: %zu \nStatus: %s \nAllocation ID: %d",
                i+1,
-               (m->blocks+i)->start,
-               (m->blocks+i)->start+(m->blocks+i)->size-1,
-               (m->blocks+i)->size,
-               (m->blocks+i)->isAllocated == 1 ? "Allocated" : "Free",
-               (m->blocks+i)->id);
+                (m->blocks+i)->start,
+                (m->blocks+i)->start+(m->blocks+i)->size-1,
+                (m->blocks+i)->size,
+                (m->blocks+i)->isAllocated == 1 ? "Allocated" : "Free",
+                (m->blocks+i)->id);
 
         printf("\n------------------");
     }
@@ -491,14 +508,17 @@ void detectExternalFragmentation(struct MemoryManager *m, size_t requestedSize){
     }
 }
 
-void changeAllocationStrategy(struct MemoryManager *m){
+int changeAllocationStrategy(struct MemoryManager *m){
     printf("\n1 -> First Fit");
     printf("\n2 -> Best Fit");
     printf("\n3 -> Worst Fit");
 
     while(1){
         printf("\nEnter your choice: ");
-        int n = getInt();
+        int n;
+        if(!getInt(&n)){
+            return 0;
+        }
 
         if(!validStrategy(n)){
             printf("\nEnter a choice between %d and %d.", FIRST_FIT, WORST_FIT);
@@ -535,6 +555,8 @@ void changeAllocationStrategy(struct MemoryManager *m){
             printf("Worst Fit");
             break;
     }
+
+    return 1;
 }
 
 void printMenu(){
@@ -550,6 +572,10 @@ void printMenu(){
 }
 
 void cleanupMemoryManager(struct MemoryManager *m){
+    if(m == NULL){
+        return;
+    }
+
     free(m->pool);
     free(m->blocks);
     free(m);
@@ -566,7 +592,7 @@ int main(){
     int a = initializePool(m);
 
     if(!a){
-        free(m);
+        cleanupMemoryManager(m);
         return 1;
     }
 
@@ -576,25 +602,30 @@ int main(){
         printMenu();
         printf("\nEnter your choice: ");
 
-        choice = getInt();
+        if(!getInt(&choice)){
+            cleanupMemoryManager(m);
+            return 0;
+        }
 
         switch(choice){
 
             case 1:{
-                size_t size;
+                size_t size, start;
+                int id;
 
                 printf("\nEnter allocation size: ");
-                int requestedSize = getInt();
-
-                if(!validRequestSize(requestedSize,m->poolSize)){
-                    printf("\nInvalid allocation size.");
-                    break;
+                int requestedSize;
+                if(!getInt(&requestedSize)){
+                    cleanupMemoryManager(m);
+                    return 0;
                 }
 
                 size = (size_t)requestedSize;
 
-                if(allocateMemory(m,size,m->strategy)){
-                    printf("\nMemory allocated successfully!");
+                if(allocateMemory(m,size,m->strategy,&id,&start)){
+                    printf("\nAllocation successful. ID: %d, Start: %zu, Size: %zu", id, start, size);
+                }else if(requestedSize > 0 && size <= m->poolSize){
+                    detectExternalFragmentation(m,size);
                 }
 
                 break;
@@ -604,7 +635,10 @@ int main(){
                 int id;
 
                 printf("\nEnter Allocation ID: ");
-                id = getInt();
+                if(!getInt(&id)){
+                    cleanupMemoryManager(m);
+                    return 0;
+                }
 
                 if(releaseMemory(m,id)){
                     printf("\nMemory released successfully!");
@@ -618,20 +652,31 @@ int main(){
                 size_t newSize;
 
                 printf("\nEnter Allocation ID: ");
-                id = getInt();
+                if(!getInt(&id)){
+                    cleanupMemoryManager(m);
+                    return 0;
+                }
 
                 printf("\nEnter New Size: ");
-                int requestedSize = getInt();
+                int requestedSize;
+                if(!getInt(&requestedSize)){
+                    cleanupMemoryManager(m);
+                    return 0;
+                }
+
+                newSize = (size_t)requestedSize;
 
                 if(!validRequestSize(requestedSize,m->poolSize)){
                     printf("\nInvalid resize size.");
                     break;
                 }
 
-                newSize = (size_t)requestedSize;
+                int resizeStatus = resizeMemory(m,id,newSize);
 
-                if(resizeMemory(m,id,newSize)){
+                if(resizeStatus == 1){
                     printf("\nMemory resized successfully!");
+                }else if(resizeStatus == 0){
+                    detectExternalFragmentation(m,newSize);
                 }
 
                 break;
@@ -647,7 +692,11 @@ int main(){
 
             case 6:{
                 printf("\nEnter requested size: ");
-                int inputSize = getInt();
+                int inputSize;
+                if(!getInt(&inputSize)){
+                    cleanupMemoryManager(m);
+                    return 0;
+                }
 
                 if(inputSize < 0){
                     printf("\nInvalid requested size.");
@@ -659,7 +708,10 @@ int main(){
             }
 
             case 7:
-                changeAllocationStrategy(m);
+                if(!changeAllocationStrategy(m)){
+                    cleanupMemoryManager(m);
+                    return 0;
+                }
                 break;
 
             case 8:
