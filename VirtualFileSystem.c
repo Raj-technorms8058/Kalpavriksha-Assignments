@@ -20,16 +20,24 @@ typedef struct FileNode{
     struct FileNode *parent;
     struct FileNode *next;
     struct FileNode *children;
-    int *blockPointers;
     FreeBlock **blockNodes;
     int blockCount;
     size_t contentSize;
 } FileNode;
 
-char disk[NUM_BLOCKS][BLOCK_SIZE];
-FreeBlock *freeHead = NULL, *freeTail = NULL;
-int freeCount = 0;
-FileNode *root = NULL, *cwd = NULL;
+typedef struct Vfs{
+    char disk[NUM_BLOCKS][BLOCK_SIZE];
+    FreeBlock *freeHead;
+    FreeBlock *freeTail;
+    int freeCount;
+    FileNode *root;
+    FileNode *cwd;
+} Vfs;
+
+typedef struct Command{
+    const char *name;
+    void (*handler)(Vfs *vfs, char *args);
+} Command;
 
 int readLine(char *buffer, int size){
     if(fgets(buffer, size, stdin) == NULL){
@@ -47,11 +55,11 @@ int readLine(char *buffer, int size){
 }
 
 char *trimSpaces(char *str){
-    while(isspace(*str)){
+    while(isspace((unsigned char)*str)){
         str++;
     }
     char *end = str + strlen(str);
-    while(end > str && isspace(*(end - 1))){
+    while(end > str && isspace((unsigned char)*(end - 1))){
         end--;
     }
     *end = '\0';
@@ -60,10 +68,10 @@ char *trimSpaces(char *str){
 
 int getWord(char **input, char *word){
     int i = 0;
-    while(isspace(**input)){
+    while(isspace((unsigned char)**input)){
         (*input)++;
     }
-    while(**input != '\0' && !isspace(**input)){
+    while(**input != '\0' && !isspace((unsigned char)**input)){
         if(i >= MAX_NAME){
             return 0;
         }
@@ -72,6 +80,15 @@ int getWord(char **input, char *word){
     }
     word[i] = '\0';
     return i > 0;
+}
+
+char *singleArgument(char *args, const char *usage){
+    static char arg[MAX_NAME + 1];
+    if(!getWord(&args, arg) || *trimSpaces(args) != '\0'){
+        printf("Usage: %s\n", usage);
+        return NULL;
+    }
+    return arg;
 }
 
 int parseContent(char *input, char **content){
@@ -101,7 +118,7 @@ int isValidName(const char *name){
     }
     int i = 0;
     while(name[i] != '\0'){
-        if(isspace(name[i]) || name[i] == '/'){
+        if(isspace((unsigned char)name[i]) || name[i] == '/'){
             return 0;
         }
         i++;
@@ -109,7 +126,7 @@ int isValidName(const char *name){
     return 1;
 }
 
-int initializeFreeBlocks(){
+int initializeFreeBlocks(Vfs *vfs){
     int i = 0;
     while(i < NUM_BLOCKS){
         FreeBlock *node = malloc(sizeof(FreeBlock));
@@ -118,63 +135,61 @@ int initializeFreeBlocks(){
         }
         node->index = i;
         node->next = NULL;
-        node->prev = freeTail;
-        if(freeTail == NULL){
-            freeHead = node;
+        node->prev = vfs->freeTail;
+        if(vfs->freeTail == NULL){
+            vfs->freeHead = node;
         }
         else{
-            freeTail->next = node;
+            vfs->freeTail->next = node;
         }
-        freeTail = node;
-        freeCount++;
+        vfs->freeTail = node;
+        vfs->freeCount++;
         i++;
     }
     return 1;
 }
 
-FreeBlock *allocateBlock(){
-    if(freeHead == NULL){
+FreeBlock *allocateBlock(Vfs *vfs){
+    if(vfs->freeHead == NULL){
         return NULL;
     }
-    FreeBlock *node = freeHead;
-    freeHead = freeHead->next;
-    if(freeHead == NULL){
-        freeTail = NULL;
+    FreeBlock *node = vfs->freeHead;
+    vfs->freeHead = vfs->freeHead->next;
+    if(vfs->freeHead == NULL){
+        vfs->freeTail = NULL;
     }
     else{
-        freeHead->prev = NULL;
+        vfs->freeHead->prev = NULL;
     }
     node->next = NULL;
     node->prev = NULL;
-    freeCount--;
+    vfs->freeCount--;
     return node;
 }
 
-void releaseBlock(FreeBlock *node){
+void releaseBlock(Vfs *vfs, FreeBlock *node){
     if(node == NULL){
         return;
     }
     node->next = NULL;
-    node->prev = freeTail;
-    if(freeTail == NULL){
-        freeHead = node;
+    node->prev = vfs->freeTail;
+    if(vfs->freeTail == NULL){
+        vfs->freeHead = node;
     }
     else{
-        freeTail->next = node;
+        vfs->freeTail->next = node;
     }
-    freeTail = node;
-    freeCount++;
+    vfs->freeTail = node;
+    vfs->freeCount++;
 }
 
-void releaseFileBlocks(FileNode *file){
+void releaseFileBlocks(Vfs *vfs, FileNode *file){
     int i = 0;
     while(i < file->blockCount){
-        releaseBlock(file->blockNodes[i]);
+        releaseBlock(vfs, file->blockNodes[i]);
         i++;
     }
-    free(file->blockPointers);
     free(file->blockNodes);
-    file->blockPointers = NULL;
     file->blockNodes = NULL;
     file->blockCount = 0;
     file->contentSize = 0;
@@ -190,22 +205,27 @@ FileNode *createNode(const char *name, int isDirectory){
     node->parent = NULL;
     node->next = NULL;
     node->children = NULL;
-    node->blockPointers = NULL;
     node->blockNodes = NULL;
     node->blockCount = 0;
     node->contentSize = 0;
     return node;
 }
 
-int initializeFileSystem(){
-    if(!initializeFreeBlocks()){
+int initializeFileSystem(Vfs *vfs){
+    vfs->freeHead = NULL;
+    vfs->freeTail = NULL;
+    vfs->freeCount = 0;
+    vfs->root = NULL;
+    vfs->cwd = NULL;
+    
+    if(!initializeFreeBlocks(vfs)){
         return 0;
     }
-    root = createNode("/", 1);
-    if(root == NULL){
+    vfs->root = createNode("/", 1);
+    if(vfs->root == NULL){
         return 0;
     }
-    cwd = root;
+    vfs->cwd = vfs->root;
     return 1;
 }
 
@@ -286,12 +306,16 @@ void printPath(FileNode *directory){
     }
 }
 
-void makeDirectory(const char *name){
+void makeDirectory(Vfs *vfs, char *args){
+    char *name = singleArgument(args, "mkdir directory_name");
+    if(name == NULL){
+        return;
+    }
     if(!isValidName(name)){
         printf("Invalid directory name.\n");
         return;
     }
-    if(findChild(cwd, name) != NULL){
+    if(findChild(vfs->cwd, name) != NULL){
         printf("Name already exists.\n");
         return;
     }
@@ -300,46 +324,58 @@ void makeDirectory(const char *name){
         printf("Memory allocation failed.\n");
         return;
     }
-    insertChild(cwd, node);
+    insertChild(vfs->cwd, node);
     printf("Directory '%s' created successfully.\n", name);
 }
 
-void changeDirectory(const char *name){
+void changeDirectory(Vfs *vfs, char *args){
+    char *name = singleArgument(args, "cd directory_name");
+    if(name == NULL){
+        return;
+    }
     if(strcmp(name, "..") == 0){
-        if(cwd->parent != NULL){
-            cwd = cwd->parent;
+        if(vfs->cwd->parent != NULL){
+            vfs->cwd = vfs->cwd->parent;
         }
     }
     else{
-        FileNode *node = findChild(cwd, name);
+        FileNode *node = findChild(vfs->cwd, name);
         if(node == NULL || !node->isDirectory){
             printf("Directory not found.\n");
             return;
         }
-        cwd = node;
+        vfs->cwd = node;
     }
     printf("Moved to ");
-    printPath(cwd);
+    printPath(vfs->cwd);
     printf("\n");
 }
 
-void listDirectory(){
-    if(cwd->children == NULL){
+void listDirectory(Vfs *vfs, char *args){
+    if(*trimSpaces(args) != '\0'){
+        printf("Usage: ls\n");
+        return;
+    }
+    if(vfs->cwd->children == NULL){
         printf("(empty)\n");
         return;
     }
-    FileNode *current = cwd->children;
+    FileNode *current = vfs->cwd->children;
     while(1){
         printf("%s%s\n", current->name, current->isDirectory ? "/" : "");
         current = current->next;
-        if(current == cwd->children){
+        if(current == vfs->cwd->children){
             break;
         }
     }
 }
 
-void removeDirectory(const char *name){
-    FileNode *node = findChild(cwd, name);
+void removeDirectory(Vfs *vfs, char *args){
+    char *name = singleArgument(args, "rmdir directory_name");
+    if(name == NULL){
+        return;
+    }
+    FileNode *node = findChild(vfs->cwd, name);
     if(node == NULL || !node->isDirectory){
         printf("Directory not found.\n");
         return;
@@ -348,17 +384,21 @@ void removeDirectory(const char *name){
         printf("Directory must be empty before deletion.\n");
         return;
     }
-    removeChild(cwd, node);
+    removeChild(vfs->cwd, node);
     free(node);
     printf("Directory removed successfully.\n");
 }
 
-void createFile(const char *name){
+void createFile(Vfs *vfs, char *args){
+    char *name = singleArgument(args, "create filename");
+    if(name == NULL){
+        return;
+    }
     if(!isValidName(name)){
         printf("Invalid filename.\n");
         return;
     }
-    if(findChild(cwd, name) != NULL){
+    if(findChild(vfs->cwd, name) != NULL){
         printf("Name already exists.\n");
         return;
     }
@@ -367,62 +407,72 @@ void createFile(const char *name){
         printf("Memory allocation failed.\n");
         return;
     }
-    insertChild(cwd, node);
+    insertChild(vfs->cwd, node);
     printf("File '%s' created successfully.\n", name);
 }
 
-void writeFile(const char *name, const char *content){
-    FileNode *file = findChild(cwd, name);
+void writeFile(Vfs *vfs, char *args){
+    char name[MAX_NAME + 1];
+    char *content;
+    
+    if(!getWord(&args, name)){
+        printf("Usage: write filename \"content\"\n");
+        return;
+    }
+    if(!parseContent(args, &content)){
+        printf("Content must be enclosed in quotes.\n");
+        return;
+    }
+    
+    FileNode *file = findChild(vfs->cwd, name);
     if(file == NULL || file->isDirectory){
         printf("File not found.\n");
         return;
     }
     size_t length = strlen(content);
     int required = (int)((length + BLOCK_SIZE - 1) / BLOCK_SIZE);
-    if(required > freeCount + file->blockCount){
+    if(required > vfs->freeCount + file->blockCount){
         printf("Disk is full. Cannot write file.\n");
         return;
     }
-    int *newPointers = NULL;
     FreeBlock **newNodes = NULL;
     if(required > 0){
-        newPointers = malloc(required * sizeof(int));
         newNodes = malloc(required * sizeof(FreeBlock *));
-        if(newPointers == NULL || newNodes == NULL){
-            free(newPointers);
-            free(newNodes);
+        if(newNodes == NULL){
             printf("Memory allocation failed.\n");
             return;
         }
     }
-    releaseFileBlocks(file);
+    releaseFileBlocks(vfs, file);
     int i = 0;
     while(i < required){
-        FreeBlock *block = allocateBlock();
-        newPointers[i] = block->index;
+        FreeBlock *block = allocateBlock(vfs);
         newNodes[i] = block;
         int j = 0;
         size_t start = (size_t)i * BLOCK_SIZE;
         while(j < BLOCK_SIZE){
             if(start + j < length){
-                disk[block->index][j] = content[start + j];
+                vfs->disk[block->index][j] = content[start + j];
             }
             else{
-                disk[block->index][j] = '\0';
+                vfs->disk[block->index][j] = '\0';
             }
             j++;
         }
         i++;
     }
-    file->blockPointers = newPointers;
     file->blockNodes = newNodes;
     file->blockCount = required;
     file->contentSize = length;
     printf("Data written successfully (size=%d bytes).\n", (int)length);
 }
 
-void readFile(const char *name){
-    FileNode *file = findChild(cwd, name);
+void readFile(Vfs *vfs, char *args){
+    char *name = singleArgument(args, "read filename");
+    if(name == NULL){
+        return;
+    }
+    FileNode *file = findChild(vfs->cwd, name);
     if(file == NULL || file->isDirectory){
         printf("File not found.\n");
         return;
@@ -431,9 +481,9 @@ void readFile(const char *name){
     int i = 0;
     while(i < file->blockCount && remaining > 0){
         int j = 0;
-        int blockIndex = file->blockPointers[i];
+        int blockIndex = file->blockNodes[i]->index;
         while(j < BLOCK_SIZE && remaining > 0){
-            putchar(disk[blockIndex][j]);
+            putchar(vfs->disk[blockIndex][j]);
             j++;
             remaining--;
         }
@@ -442,28 +492,36 @@ void readFile(const char *name){
     printf("\n");
 }
 
-void deleteFile(const char *name){
-    FileNode *file = findChild(cwd, name);
+void deleteFile(Vfs *vfs, char *args){
+    char *name = singleArgument(args, "delete filename");
+    if(name == NULL){
+        return;
+    }
+    FileNode *file = findChild(vfs->cwd, name);
     if(file == NULL || file->isDirectory){
         printf("File not found.\n");
         return;
     }
-    releaseFileBlocks(file);
-    removeChild(cwd, file);
+    releaseFileBlocks(vfs, file);
+    removeChild(vfs->cwd, file);
     free(file);
     printf("File deleted successfully.\n");
 }
 
-void showDiskUsage(){
-    int used = NUM_BLOCKS - freeCount;
+void showDiskUsage(Vfs *vfs, char *args){
+    if(*trimSpaces(args) != '\0'){
+        printf("Usage: df\n");
+        return;
+    }
+    int used = NUM_BLOCKS - vfs->freeCount;
     float percentage = (float)used * 100 / NUM_BLOCKS;
     printf("Total Blocks: %d\n", NUM_BLOCKS);
     printf("Used Blocks: %d\n", used);
-    printf("Free Blocks: %d\n", freeCount);
+    printf("Free Blocks: %d\n", vfs->freeCount);
     printf("Disk Usage: %.2f%%\n", percentage);
 }
 
-void freeDirectoryContents(FileNode *directory){
+void freeDirectoryContents(Vfs *vfs, FileNode *directory){
     if(directory->children == NULL){
         return;
     }
@@ -475,10 +533,10 @@ void freeDirectoryContents(FileNode *directory){
         int last = (next == head);
         current->next = NULL;
         if(current->isDirectory){
-            freeDirectoryContents(current);
+            freeDirectoryContents(vfs, current);
         }
         else{
-            releaseFileBlocks(current);
+            releaseFileBlocks(vfs, current);
         }
         free(current);
         if(last){
@@ -488,26 +546,56 @@ void freeDirectoryContents(FileNode *directory){
     }
 }
 
-void cleanupFileSystem(){
-    if(root != NULL){
-        freeDirectoryContents(root);
-        free(root);
-        root = NULL;
-        cwd = NULL;
+void cleanupFileSystem(Vfs *vfs){
+    if(vfs->root != NULL){
+        freeDirectoryContents(vfs, vfs->root);
+        free(vfs->root);
+        vfs->root = NULL;
+        vfs->cwd = NULL;
     }
-    while(freeHead != NULL){
-        FreeBlock *next = freeHead->next;
-        free(freeHead);
-        freeHead = next;
+    while(vfs->freeHead != NULL){
+        FreeBlock *next = vfs->freeHead->next;
+        free(vfs->freeHead);
+        vfs->freeHead = next;
     }
-    freeTail = NULL;
-    freeCount = 0;
+    vfs->freeTail = NULL;
+    vfs->freeCount = 0;
 }
 
-int processCommand(char *input){
+void exitShell(Vfs *vfs, char *args){
+    if(*trimSpaces(args) != '\0'){
+        printf("Usage: exit\n");
+        return;
+    }
+    cleanupFileSystem(vfs);
+    printf("Memory released. Exiting program...\n");
+    exit(0);
+}
+
+Command commands[] = {
+    {"mkdir", makeDirectory},
+    {"cd", changeDirectory},
+    {"create", createFile},
+    {"write", writeFile},
+    {"read", readFile},
+    {"delete", deleteFile},
+    {"rmdir", removeDirectory},
+    {"ls", listDirectory},
+    {"df", showDiskUsage},
+    {"exit", exitShell}
+};
+
+void showPwd(Vfs *vfs, char *args){
+    if(*trimSpaces(args) != '\0'){
+        printf("Usage: pwd\n");
+        return;
+    }
+    printPath(vfs->cwd);
+    printf("\n");
+}
+
+int processCommand(Vfs *vfs, char *input){
     char command[MAX_NAME + 1];
-    char name[MAX_NAME + 1];
-    char *content;
     char *args = input;
     
     if(!getWord(&args, command)){
@@ -516,118 +604,39 @@ int processCommand(char *input){
     
     args = trimSpaces(args);
     
-    if(strcmp(command, "mkdir") == 0){
-        if(!getWord(&args, name) || *trimSpaces(args) != '\0'){
-            printf("Usage: mkdir directory_name\n");
-        }
-        else{
-            makeDirectory(name);
-        }
+    if(strcmp(command, "pwd") == 0){
+        showPwd(vfs, args);
+        return 1;
     }
-    else if(strcmp(command, "cd") == 0){
-        if(!getWord(&args, name) || *trimSpaces(args) != '\0'){
-            printf("Usage: cd directory_name\n");
+    
+    int numCommands = sizeof(commands) / sizeof(commands[0]);
+    int i = 0;
+    while(i < numCommands){
+        if(strcmp(command, commands[i].name) == 0){
+            commands[i].handler(vfs, args);
+            return 1;
         }
-        else{
-            changeDirectory(name);
-        }
+        i++;
     }
-    else if(strcmp(command, "create") == 0){
-        if(!getWord(&args, name) || *trimSpaces(args) != '\0'){
-            printf("Usage: create filename\n");
-        }
-        else{
-            createFile(name);
-        }
-    }
-    else if(strcmp(command, "write") == 0){
-        if(!getWord(&args, name)){
-            printf("Usage: write filename \"content\"\n");
-        }
-        else if(!parseContent(args, &content)){
-            printf("Content must be enclosed in quotes.\n");
-        }
-        else{
-            writeFile(name, content);
-        }
-    }
-    else if(strcmp(command, "read") == 0){
-        if(!getWord(&args, name) || *trimSpaces(args) != '\0'){
-            printf("Usage: read filename\n");
-        }
-        else{
-            readFile(name);
-        }
-    }
-    else if(strcmp(command, "delete") == 0){
-        if(!getWord(&args, name) || *trimSpaces(args) != '\0'){
-            printf("Usage: delete filename\n");
-        }
-        else{
-            deleteFile(name);
-        }
-    }
-    else if(strcmp(command, "rmdir") == 0){
-        if(!getWord(&args, name) || *trimSpaces(args) != '\0'){
-            printf("Usage: rmdir directory_name\n");
-        }
-        else{
-            removeDirectory(name);
-        }
-    }
-    else if(strcmp(command, "ls") == 0){
-        if(*args != '\0'){
-            printf("Usage: ls\n");
-        }
-        else{
-            listDirectory();
-        }
-    }
-    else if(strcmp(command, "pwd") == 0){
-        if(*args != '\0'){
-            printf("Usage: pwd\n");
-        }
-        else{
-            printPath(cwd);
-            printf("\n");
-        }
-    }
-    else if(strcmp(command, "df") == 0){
-        if(*args != '\0'){
-            printf("Usage: df\n");
-        }
-        else{
-            showDiskUsage();
-        }
-    }
-    else if(strcmp(command, "exit") == 0){
-        if(*args != '\0'){
-            printf("Usage: exit\n");
-        }
-        else{
-            cleanupFileSystem();
-            printf("Memory released. Exiting program...\n");
-            return 0;
-        }
-    }
-    else{
-        printf("Unknown command: %s\n", command);
-    }
+    
+    printf("Unknown command: %s\n", command);
     return 1;
 }
 
 int main(){
     char input[MAX_INPUT];
-    if(!initializeFileSystem()){
+    Vfs vfs;
+    
+    if(!initializeFileSystem(&vfs)){
         printf("Filesystem initialization failed.\n");
-        cleanupFileSystem();
+        cleanupFileSystem(&vfs);
         return 1;
     }
     
     printf("Compact VFS - ready. Type 'exit' to quit.\n");
     
     while(1){
-        printPath(cwd);
+        printPath(vfs.cwd);
         printf(" > ");
         int result = readLine(input, MAX_INPUT);
         
@@ -641,11 +650,9 @@ int main(){
             continue;
         }
         
-        if(!processCommand(input)){
-            return 0;
-        }
+        processCommand(&vfs, input);
     }
     
-    cleanupFileSystem();
+    cleanupFileSystem(&vfs);
     return 0;
 }
